@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres
+    container_name: postgres_container
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=sahar223010
+      - POSTGRES_DB=rental_service_db
+
+
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin_container
+    ports:
+      - "80:80"
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=sahar.mirtalebi@gmail.com
+      - PGADMIN_DEFAULT_PASSWORD=sahar223010
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
