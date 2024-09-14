@@ -1,6 +1,7 @@
 package user
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -30,6 +31,10 @@ func (service *UserService) CreateUser(user User) (uint, error) {
 
 	err = service.repo.AddUser(&user)
 	if err != nil {
+		if errors.Is(err, ErrDuplicateEmail) {
+			return 0, ErrDuplicateEmail
+		}
+		service.logger.Error("fail to create user", zap.Error(err))
 		return 0, err
 	}
 	return user.ID, nil

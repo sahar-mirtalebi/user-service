@@ -1,6 +1,8 @@
 package user
 
 import (
+	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -24,6 +26,14 @@ func NewRepository(db *gorm.DB) *UserRepository {
 	return &UserRepository{db: db}
 }
 
+var ErrDuplicateEmail = errors.New("email already exists")
+
 func (repo *UserRepository) AddUser(user *User) error {
-	return repo.db.Create(&user).Error
+	if err := repo.db.Create(&user).Error; err != nil {
+		if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+			return ErrDuplicateEmail
+		}
+		return err
+	}
+	return nil
 }

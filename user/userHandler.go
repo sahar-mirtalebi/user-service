@@ -1,6 +1,7 @@
 package user
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/go-playground/validator/v10"
@@ -32,6 +33,10 @@ func (handler *UserHandler) RegisterUser(c echo.Context) error {
 
 	userId, err := handler.service.CreateUser(user)
 	if err != nil {
+		if errors.Is(err, ErrDuplicateEmail) {
+			handler.logger.Warn("attempt to register with duplicate email", zap.String("email", user.Email))
+			return echo.NewHTTPError(http.StatusConflict, "this email is already registered")
+		}
 		handler.logger.Error("fail to create user", zap.Error(err))
 		return err
 	}
