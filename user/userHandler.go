@@ -3,6 +3,7 @@ package user
 import (
 	"errors"
 	"net/http"
+	"user-service/auth"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
@@ -42,5 +43,104 @@ func (handler *UserHandler) RegisterUser(c echo.Context) error {
 	}
 	return c.JSON(http.StatusCreated, map[string]interface{}{
 		"user_id": userId,
+	})
+}
+
+func (handler *UserHandler) LoginUser(c echo.Context) error {
+	var creds struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	if err := c.Bind(&creds); err != nil {
+		handler.logger.Error("fail to bind the request", zap.Error(err))
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request")
+	}
+
+	user, err := handler.service.AthenticateUser(creds.Email, creds.Password)
+	if err != nil {
+		handler.logger.Error("authenticated fail", zap.Error(err))
+		return err
+	}
+
+	token, err := auth.GenerateToken(user.ID, user.Email, "login")
+	if err != nil {
+		handler.logger.Error("failed to generate token", zap.Error(err))
+		return echo.NewHTTPError(http.StatusInternalServerError, "error generating token")
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"token": token,
+	})
+}
+
+func (handler *UserHandler) FogotPassword(c echo.Context) error {
+	var request struct {
+		Email string `json:"email"`
+	}
+
+	if err := c.Bind(&request); err != nil {
+		handler.logger.Error("fail to bind the request", zap.Error(err))
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request")
+	}
+
+	user, err := handler.service.CheckEmailExists(request.Email)
+	if err != nil {
+		handler.logger.Error("authenticated fail", zap.Error(err))
+		return err
+	}
+
+	token, err := auth.GenerateToken(user.ID, user.Email, "reset")
+	if err != nil {
+		handler.logger.Error("failed to generate token", zap.Error(err))
+		return echo.NewHTTPError(http.StatusInternalServerError, "error generating token")
+	}
+
+	resetLink := "https://rentroom.com/reset-password?token=" + token
+
+	err = handler.service.sendResetLinkEmail(user.Email, resetLink)
+	if err != nil {
+		handler.logger.Error("faild to send reset email", zap.Error(err))
+		return echo.NewHTTPError(http.StatusInternalServerError, "could not send reset email")
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"resetLink": resetLink,
+		"message":   "reset link sent to email",
+	})
+}
+
+func (handler *UserHandler) ResetPassword(c echo.Context) error {
+	token := c.QueryParam("token")
+
+	var Request struct {
+		NewPassword string `json:"newPassword"`
+	}
+	if err := c.Bind(&Request); err != nil {
+		handler.logger.Error("fail to bind the request", zap.Error(err))
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request")
+	}
+
+	claims, err := auth.ValidateToken(token)
+	if err != nil {
+		handler.logger.Error("invalid or expired token", zap.Error(err))
+		return echo.NewHTTPError(http.StatusUnauthorized, "invalid token")
+	}
+
+	userIdFloat, ok := claims["UserId"].(float64)
+	if !ok {
+		handler.logger.Error("invalid token claim", zap.Error(err))
+		return echo.NewHTTPError(http.StatusUnauthorized, "invalid token claim")
+	}
+	userId := uint(userIdFloat)
+
+	err = handler.service.UpdatePassword(userId, Request.NewPassword)
+	if err != nil {
+		handler.logger.Error("failed to update password")
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to update password")
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"message": "your password updated successfully",
 	})
 }

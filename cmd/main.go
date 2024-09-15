@@ -34,6 +34,9 @@ func NewValidator() *validator.Validate {
 
 func RegisterRoutes(e *echo.Echo, handler *user.UserHandler) {
 	e.POST("/register", handler.RegisterUser)
+	e.POST("/login", handler.LoginUser)
+	e.POST("/forgot-password", handler.FogotPassword)
+	e.POST("/reset-password", handler.ResetPassword)
 }
 
 func main() {
