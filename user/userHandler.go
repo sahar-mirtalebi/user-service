@@ -144,3 +144,81 @@ func (handler *UserHandler) ResetPassword(c echo.Context) error {
 		"message": "your password updated successfully",
 	})
 }
+
+func (handler *UserHandler) DeleteAccount(c echo.Context) error {
+	userId, ok := c.Get("userId").(uint)
+	if !ok {
+		handler.logger.Error("failed to get userId from context")
+		return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
+	}
+
+	err := handler.service.DeleteAccount(userId)
+	if err != nil {
+		handler.logger.Error("failed to delete account", zap.Error(err))
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to delete account")
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"message": "account deleted successfully",
+	})
+
+}
+
+func (handler *UserHandler) UpdateAccount(c echo.Context) error {
+	userId, ok := c.Get("userId").(uint)
+	if !ok {
+		handler.logger.Error("failed to get userId from context")
+		return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
+	}
+
+	var updatedUser struct {
+		FirstName string `json:"firstName" validate:"omitempty,min=3"`
+		LastName  string `json:"lastName" validate:"omitempty,min=3"`
+		Email     string `json:"email" validate:"omitempty,email"`
+	}
+	if err := c.Bind(&updatedUser); err != nil {
+		handler.logger.Error("fail to bind the request", zap.Error(err))
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request")
+	}
+
+	if err := handler.validate.Struct(updatedUser); err != nil {
+		handler.logger.Error("provided data is invalid", zap.Error(err))
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid data")
+	}
+
+	err := handler.service.UpdateAccount(userId, updatedUser)
+	if err != nil {
+		handler.logger.Error("failed to update account", zap.Error(err))
+		return echo.NewHTTPError(http.StatusInternalServerError, "error updating account")
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"message": "account updated successfully",
+	})
+}
+
+func (handler *UserHandler) RetrieveAccount(c echo.Context) error {
+	userId, ok := c.Get("userId").(uint)
+	if !ok {
+		handler.logger.Error("failed to get userId from context")
+		return echo.NewHTTPError(http.StatusUnauthorized, "unauthorized")
+	}
+
+	user, err := handler.service.RetrieveAccount(userId)
+	if err != nil {
+		handler.logger.Error("failed to retrieve user account", zap.Error(err))
+		return echo.NewHTTPError(http.StatusInternalServerError, "error retrieving account")
+	}
+
+	var retrievedUser struct {
+		FirstName string `json:"firstName"`
+		LastName  string `json:"lastName"`
+		Email     string `json:"email"`
+	}
+
+	retrievedUser.FirstName = user.FirstName
+	retrievedUser.LastName = user.LastName
+	retrievedUser.Email = user.Email
+
+	return c.JSON(http.StatusOK, retrievedUser)
+}

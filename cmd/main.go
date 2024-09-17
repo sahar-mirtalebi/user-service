@@ -1,6 +1,8 @@
 package main
 
 import (
+	"log"
+	"user-service/auth"
 	"user-service/user"
 
 	"github.com/go-playground/validator/v10"
@@ -37,6 +39,14 @@ func RegisterRoutes(e *echo.Echo, handler *user.UserHandler) {
 	e.POST("/login", handler.LoginUser)
 	e.POST("/forgot-password", handler.FogotPassword)
 	e.POST("/reset-password", handler.ResetPassword)
+
+	authGroup := e.Group("/auth")
+	authGroup.Use(auth.AuthMiddleware)
+
+	authGroup.DELETE("/users/me", handler.DeleteAccount)
+	authGroup.PUT("/users/me", handler.UpdateAccount)
+	authGroup.GET("/users/me", handler.RetrieveAccount)
+
 }
 
 func main() {
@@ -57,7 +67,9 @@ func main() {
 				RegisterRoutes(e, handler)
 			},
 			func() {
-				e.Start(":8080")
+				if err := e.Start(":8080"); err != nil {
+					log.Fatal("Echo server failed to start", zap.Error(err))
+				}
 			},
 		),
 	)

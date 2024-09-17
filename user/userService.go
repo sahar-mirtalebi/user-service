@@ -103,3 +103,51 @@ func (service *UserService) UpdatePassword(userId uint, newPassword string) erro
 
 	return nil
 }
+
+func (service *UserService) DeleteAccount(userId uint) error {
+	err := service.repo.DeleteUser(userId)
+	if err != nil {
+		service.logger.Error("failed to delete user", zap.Error(err))
+		return err
+	}
+	return nil
+}
+
+func (service *UserService) UpdateAccount(userId uint, updatedUser struct {
+	FirstName string `json:"firstName" validate:"omitempty,min=3"`
+	LastName  string `json:"lastName" validate:"omitempty,min=3"`
+	Email     string `json:"email" validate:"omitempty,email"`
+}) error {
+	user, err := service.repo.GetUserById(userId)
+	if err != nil {
+		service.logger.Error("failed to fetch user", zap.Error(err))
+		return err
+	}
+
+	if updatedUser.FirstName != "" {
+		user.FirstName = updatedUser.FirstName
+	}
+	if updatedUser.LastName != "" {
+		user.LastName = updatedUser.LastName
+	}
+	if updatedUser.Email != "" {
+		user.Email = updatedUser.Email
+	}
+	user.UpdatedAt = time.Now()
+
+	if err := service.repo.UpdateUser(user); err != nil {
+		service.logger.Error("failed to update user", zap.Error(err))
+		return err
+	}
+
+	return nil
+}
+
+func (service *UserService) RetrieveAccount(userId uint) (*User, error) {
+	user, err := service.repo.GetUserById(userId)
+	if err != nil {
+		service.logger.Error("failed to fetch user", zap.Error(err))
+		return nil, err
+	}
+	return user, nil
+}
