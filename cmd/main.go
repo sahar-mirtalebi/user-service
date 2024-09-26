@@ -22,12 +22,13 @@ func NewLogger() (*zap.Logger, error) {
 }
 
 func NewDB() (*gorm.DB, error) {
-	dsn := "host=localhost user=admin password=sahar223010 dbname=rental_service_db port=5432 sslmode=disable"
+	dsn := "host=localhost user=admin password=sahar223010 dbname=rental_service_db search_path=user-service port=5432 sslmode=disable"
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, err
 	}
 	return db, nil
+
 }
 
 func NewValidator() *validator.Validate {

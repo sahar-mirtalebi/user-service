@@ -16,18 +16,18 @@ func AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		authHeader := c.Request().Header.Get("Authorization")
 		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, map[string]string{"error": "You are not logged in. Please provide a valid token."})
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "You are not logged in. Please provide a valid token."})
 		}
 
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid authorization header format. Ensure you are logged in and provide a valid token."})
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid authorization header format. Ensure you are logged in and provide a valid token."})
 		}
 		token := parts[1]
 
 		claims, err := ValidateToken(token)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid or expired token. Please log in again."})
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid or expired token. Please log in again."})
 		}
 
 		userId, ok := claims["UserId"].(float64)
