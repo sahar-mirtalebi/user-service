@@ -96,7 +96,7 @@ func (handler *UserHandler) FogotPassword(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "error generating token")
 	}
 
-	resetLink := "https://rentroom.com/reset-password?token=" + token
+	resetLink := "http://localhost:8080/reset-password?token=" + token
 
 	err = handler.service.sendResetLinkEmail(user.Email, resetLink)
 	if err != nil {

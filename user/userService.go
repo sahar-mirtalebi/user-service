@@ -77,6 +77,7 @@ func (service *UserService) sendResetLinkEmail(email, resetLink string) error {
 }
 
 func (service *UserService) UpdatePassword(userId uint, newPassword string) error {
+
 	hashedNewPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
 	if err != nil {
 		service.logger.Error("failed to hash password", zap.Error(err))
@@ -87,13 +88,14 @@ func (service *UserService) UpdatePassword(userId uint, newPassword string) erro
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			service.logger.Warn("user not found", zap.Uint("userId", userId))
-			echo.NewHTTPError(http.StatusNotFound, "user not found")
+			return echo.NewHTTPError(http.StatusNotFound, "user not found")
 		}
 		service.logger.Error("failed to find user", zap.Error(err))
 		return echo.NewHTTPError(http.StatusInternalServerError, "error retrieving user")
 	}
 
 	user.Password = string(hashedNewPassword)
+	user.UpdatedAt = time.Now()
 
 	err = service.repo.UpdateUser(user)
 	if err != nil {
