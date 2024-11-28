@@ -54,7 +54,7 @@ func GenerateToken(userId uint, email string, tokenType string) (string, error) 
 	claims := &jwt.MapClaims{
 		"UserId":    userId,
 		"Email":     email,
-		"exp":       expirationTime.Unix(),
+		"Exp":       expirationTime.Unix(),
 		"TokenType": tokenType,
 	}
 

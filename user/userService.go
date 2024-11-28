@@ -2,96 +2,133 @@ package user
 
 import (
 	"errors"
-	"net/http"
+	"strings"
 	"time"
+	"user-service/auth"
 
-	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
 type UserService struct {
-	repo   *UserRepository
-	logger *zap.Logger
+	repo *UserRepository
 }
 
-func NewUserService(repo *UserRepository, logger *zap.Logger) *UserService {
-	return &UserService{repo: repo, logger: logger}
+func NewUserService(repo *UserRepository) *UserService {
+	return &UserService{repo: repo}
 }
 
-func (service *UserService) CreateUser(user User) (uint, error) {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+var ErrDuplicateEmail = errors.New("email already exists")
+var ErrUserNotFound = errors.New("user not found")
+
+func (service *UserService) CreateUser(userDto UserDto) (*uint, error) {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(userDto.Password), bcrypt.DefaultCost)
 	if err != nil {
-		service.logger.Error("failed to hash password", zap.Error(err))
-		return 0, echo.NewHTTPError(http.StatusInternalServerError, "error hashing password")
+		return nil, err
 	}
 
-	user.Password = string(hashedPassword)
-	user.CreatedAt = time.Now()
+	user := &User{
+		FirstName: userDto.FirstName,
+		LastName:  userDto.LastName,
+		Email:     userDto.Email,
+		Password:  string(hashedPassword),
+		CreatedAt: time.Now(),
+	}
 
-	err = service.repo.AddUser(&user)
+	err = service.repo.AddUser(user)
 	if err != nil {
-		if errors.Is(err, ErrDuplicateEmail) {
-			return 0, ErrDuplicateEmail
+		if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+			return nil, ErrDuplicateEmail
 		}
-		service.logger.Error("fail to create user", zap.Error(err))
-		return 0, err
+		return nil, err
 	}
-	return user.ID, nil
+	return &user.ID, nil
 }
 
-func (service *UserService) AthenticateUser(email, password string) (*User, error) {
+func (service *UserService) AthenticateUser(email, password string) (*string, error) {
 	user, err := service.repo.GetUserByEmail(email)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, echo.NewHTTPError(http.StatusUnauthorized, "invalid email or password")
+			return nil, ErrUserNotFound
 		}
-		service.logger.Error("error retrieving user", zap.Error(err))
 		return nil, err
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	if err != nil {
-		return nil, echo.NewHTTPError(http.StatusUnauthorized, "invalid email or password")
+		return nil, err
 	}
 
-	return user, nil
+	token, err := auth.GenerateToken(user.ID, user.Email, "login")
+	if err != nil {
+		return nil, err
+	}
+
+	return &token, nil
+}
+
+func (service *UserService) FogotPassword(email string) (*string, error) {
+	user, err := service.CheckEmailExists(email)
+	if err != nil {
+		return nil, err
+	}
+
+	token, err := auth.GenerateToken(user.ID, user.Email, "reset")
+	if err != nil {
+		return nil, err
+	}
+
+	resetLink := "http://localhost:8080/reset-password?token=" + token
+
+	err = service.sendResetLinkEmail(email, resetLink)
+	if err != nil {
+		return nil, err
+	}
+
+	return &resetLink, nil
 }
 
 func (service *UserService) CheckEmailExists(email string) (*User, error) {
 	user, err := service.repo.GetUserByEmail(email)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, echo.NewHTTPError(http.StatusUnauthorized, "invalid email or password")
+			return nil, err
 		}
-		service.logger.Error("failed to find user", zap.Error(err))
-		return nil, echo.NewHTTPError(http.StatusInternalServerError, "error retrieving user")
+		return nil, err
 	}
 	return user, nil
 }
 
 func (service *UserService) sendResetLinkEmail(email, resetLink string) error {
-	service.logger.Info("sending reset link email", zap.String("email", email), zap.String("resetLink", resetLink))
+	zap.L().Info("sending reset link email", zap.String("email", email), zap.String("resetLink", resetLink))
 	return nil
 }
 
-func (service *UserService) UpdatePassword(userId uint, newPassword string) error {
-
+func (service *UserService) UpdatePassword(token, newPassword string) error {
 	hashedNewPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
 	if err != nil {
-		service.logger.Error("failed to hash password", zap.Error(err))
-		return echo.NewHTTPError(http.StatusInternalServerError, "error hashing password")
+		return err
 	}
+
+	claims, err := auth.ValidateToken(token)
+	if err != nil {
+		return err
+	}
+
+	userIdFloat, ok := claims["UserId"].(float64)
+	if !ok {
+		return err
+	}
+
+	userId := uint(userIdFloat)
 
 	user, err := service.repo.GetUserById(userId)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			service.logger.Warn("user not found", zap.Uint("userId", userId))
-			return echo.NewHTTPError(http.StatusNotFound, "user not found")
+			return ErrUserNotFound
 		}
-		service.logger.Error("failed to find user", zap.Error(err))
-		return echo.NewHTTPError(http.StatusInternalServerError, "error retrieving user")
+		return err
 	}
 
 	user.Password = string(hashedNewPassword)
@@ -99,8 +136,7 @@ func (service *UserService) UpdatePassword(userId uint, newPassword string) erro
 
 	err = service.repo.UpdateUser(user)
 	if err != nil {
-		service.logger.Error("failed to update user password", zap.Error(err))
-		return echo.NewHTTPError(http.StatusInternalServerError, "error updating password")
+		return err
 	}
 
 	return nil
@@ -109,7 +145,6 @@ func (service *UserService) UpdatePassword(userId uint, newPassword string) erro
 func (service *UserService) DeleteAccount(userId uint) error {
 	err := service.repo.DeleteUser(userId)
 	if err != nil {
-		service.logger.Error("failed to delete user", zap.Error(err))
 		return err
 	}
 	return nil
@@ -122,7 +157,6 @@ func (service *UserService) UpdateAccount(userId uint, updatedUser struct {
 }) error {
 	user, err := service.repo.GetUserById(userId)
 	if err != nil {
-		service.logger.Error("failed to fetch user", zap.Error(err))
 		return err
 	}
 
@@ -138,7 +172,6 @@ func (service *UserService) UpdateAccount(userId uint, updatedUser struct {
 	user.UpdatedAt = time.Now()
 
 	if err := service.repo.UpdateUser(user); err != nil {
-		service.logger.Error("failed to update user", zap.Error(err))
 		return err
 	}
 
@@ -148,8 +181,11 @@ func (service *UserService) UpdateAccount(userId uint, updatedUser struct {
 func (service *UserService) RetrieveAccount(userId uint) (*User, error) {
 	user, err := service.repo.GetUserById(userId)
 	if err != nil {
-		service.logger.Error("failed to fetch user", zap.Error(err))
+		if err == gorm.ErrRecordNotFound {
+			return nil, ErrUserNotFound
+		}
 		return nil, err
 	}
+
 	return user, nil
 }
